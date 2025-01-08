@@ -16,7 +16,7 @@ static qnac_state_t st={0};
 
 
 char cmd[256];
-qnicll_set_err_fn *my_err_fn;
+extern qnicll_set_err_fn *my_err_fn;
 
 #define BUG(MSG) return(*my_err_fn)(MSG, QNICLL_ERR_BUG);
 

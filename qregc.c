@@ -29,7 +29,7 @@ void prompt(char *prompt) {
 }
 
 
-char errmsg[256];
+//char errmsg[256];
 static void err(char *str) {
   printf("ERR: %s\n", str);
   printf("     errno %d\n", errno);
