@@ -18,24 +18,9 @@
 
 char rxbuf[1024];
 
-void prompt(char *prompt) {
-  char buf[256];
-  if (prompt && prompt[0])
-    printf("%s > ", prompt);
-  else
-    printf("hit enter > ");
-  scanf("%[^\n]", buf);
-  getchar();
-}
 
 
-char errmsg[256];
-static void err(char *str) {
-  printf("ERR: %s\n", str);
-  printf("     errno %d\n", errno);
-  prompt("ok");
-  exit(1);
-}
+// char errmsg[256];
 
 //int min(int a, int b) {
 //  return (a<b)?a:b;
@@ -54,12 +39,12 @@ int rd_pkt(char *buf, int buf_sz) {
   int l;
   ssize_t sz;
   sz = read(soc, (void *)len_buf, 4);
-  if (sz<4) err("read hdr fail");
+  if (sz<4) BUG("read hdr fail");
   l = (int)ntohl(*(uint32_t *)len_buf);
   l = MIN(buf_sz, l);
   // printf("will read %d\n", l);
   sz = read(soc, (void *)buf, l);
-  if (sz<l) err("read body fail");
+  if (sz<l) BUG("read body fail");
   return sz;
 }
 
@@ -70,11 +55,10 @@ int wr_pkt(char *buf, int buf_sz) {
   l = htonl(buf_sz);
   sz = write(soc, (void *)&l, 4);
   if (sz!=4)
-    return (*my_err_fn)("write len fail", QNICLL_ERR_BUG);
+    BUG("write len fail");
   // printf("will write %d bytes\n", buf_sz);
   sz = write(soc, (void *)buf, buf_sz);
-  if (sz!=buf_sz)
-  return (*my_err_fn)("write buf fail", QNICLL_ERR_BUG);
+  if (sz!=buf_sz) BUG("write buf fail");
   return 0;
 }
 
@@ -90,7 +74,7 @@ int rd_int(int *v) {
   int n, i, l = rd_pkt(rxbuf, 1023);
   rxbuf[l]=0;
   n = sscanf(rxbuf, "%d", &i);
-  if (n!=1) return QNICLL_ERR_BUG;
+  if (n!=1) BUG("no int rsp");
   *v=i;
   return 0;
 }
@@ -103,7 +87,7 @@ int qregc_connect(char *hostname, qnicll_set_err_fn *err_fn) {
 
   my_err_fn = err_fn;
   soc = socket(AF_INET, SOCK_STREAM, 0);
-  if (soc<0) err("cant make socket to listen on ");
+  if (soc<0) BUG("cant make socket to listen on ");
   
   memset((void *)&srvr_addr, 0, sizeof(srvr_addr));
 
@@ -113,10 +97,10 @@ int qregc_connect(char *hostname, qnicll_set_err_fn *err_fn) {
 
   e=inet_pton(AF_INET, hostname, &srvr_addr.sin_addr);
   //  e=inet_pton(AF_INET, "10.0.0.5", &srvr_addr.sin_addr);
-  if (e<0) err("cant convert ip addr");
+  if (e<0) BUG("cant convert ip addr");
 
   e = connect(soc, (struct sockaddr *)&srvr_addr, sizeof(srvr_addr));
-  if (e<0) err("connect failed");
+  if (e<0) BUG("connect failed");
   
   return 0;
 }

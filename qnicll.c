@@ -11,8 +11,8 @@
 #include <time.h>
 #include <string.h>
 #include "qregc.h"
-#include "qnac.h"
 #include "qnicll.h"
+#include "qna.h"
 
 #define QNICLL_STR_LEN (256)
 
@@ -23,6 +23,7 @@
 typedef struct qnicll_state_st {
   int mode;
   char errmsg[QNICLL_STR_LEN];
+  char errmsg_ll[QNICLL_STR_LEN];
   char funcname[QNICLL_STR_LEN];
   struct iio_context *ctx;
   struct iio_device *dac, *adc;
@@ -37,23 +38,32 @@ typedef struct qnicll_state_st {
 } qnicll_state_t;
 static qnicll_state_t st={0};
 
+// standard way of calling lower-level functions
+// that might set an error message.
+#define DO(CMD) { \
+    int e=CMD;    \
+    if (e) {      \
+      sprintf(st.errmsg, "%s: %s", __func__, st.errmsg_ll);	\
+      return e;   \
+    }}
 
-static int err(char *str, int err) {
-// desc: convenience function to set error message
-//       and return an error code  
-  strcpy(st.errmsg, str);
+// lower level code fills in errmsg_ll using this:
+static int ll_err(char *str, int err) {
+  strcpy(st.errmsg_ll, str);
   return err;
 }
 
-#define RBUG(STR) { sprintf(st.errmsg, "%s: %s", __func__, STR); return QNICLL_ERR_BUG; }
 
-static int bug(char *str) {
-  return err(str, QNICLL_ERR_BUG);
+#define RBUG(STR) {                            \
+  sprintf(st.errmsg, "%s: %s", __func__, STR); \
+  return QNICLL_ERR_BUG;                       \
+}
+#define RUSE(STR) {                            \
+  sprintf(st.errmsg, "%s: %s", __func__, STR); \
+  return QNICLL_ERR_MISUSE;                    \
 }
 
-static int misuse(char *str) {
-  return err(str, QNICLL_ERR_MISUSE);
-}
+
 
 char *qnicll_error_desc(void) {
 // Desc: returns description of the last error, if any, if there was one.
@@ -70,29 +80,40 @@ int qnicll_set_sample_rate_Hz(double *fsamp_Hz) {
   return 0;
 }
 
+
+
 int qnicll_set_mode(int mode) {
 // desc: invokes settings appropriate for specified mode. (optical switches,
 //   voa settings, bias feedback goals, etc.  If called before prior set_mode finishes
 // inputs: mode: requested mode. one of QNICLL_MODE_*
 // returns: one of QNICLL_ERR_*
+  int i;
   switch(mode) {
     case QNICLL_MODE_CDM:
-      qnac_set_txsw(0);
-      qnac_set_rxsw(0);
+      i=0;
+      qna_set_txsw(&i);
+      if (i!=0) RBUG("cant set txsw");
+      i=0;
+      qna_set_rxsw(&i);
+      if (i!=0) RBUG("cant set rxsw");
       st.mode = QNICLL_MODE_CDM;
       break;
     case QNICLL_MODE_MEAS_NOISE:
-      qnac_set_txsw(0);
-      qnac_set_rxsw(0);
+      i=0;
+      qna_set_txsw(&i);
+      i=0;
+      qna_set_rxsw(&i);
       st.mode = mode;
       break;
     case QNICLL_MODE_LINK_LOOPBACK:
-      qnac_set_txsw(1);
-      qnac_set_rxsw(1);
+      i=1;
+      qna_set_txsw(&i);
+      i=1;
+      qna_set_rxsw(&i);
       st.mode = mode;
       break;
     default:
-      return err("unsupported mode", QNICLL_ERR_MISUSE);
+      RUSE("unsupported mode");
   }
   return 0;
 }
@@ -158,7 +179,7 @@ static int refill_rx_buf(void) {
   ssize_t sz;
   if (!st.adc_filled) {
     sz = iio_buffer_refill(st.adc_buf); // returns -1 or size in bytes
-    if (sz<0) err("cant refill buffer", QNICLL_ERR_BUG);
+    if (sz<0) RBUG("cant refill buffer");
     st.adc_occ_samps = sz/(QNICLL_SAMP_SZ);
     st.adc_status=0;
     st.adc_filled=1;
@@ -190,8 +211,8 @@ int qnicll_set_tx_buf_sz_samps(int *sz_samps) {
 
   st.dac_buf = iio_device_create_buffer(st.dac, sz, false);
   // Is this a misnomer?  Does this actually create multiple buffers?
+  if (!st.dac_buf) RBUG("cant make libiio dac buf");
   
-  if (!st.dac_buf) return bug("iio_device_create_buffer failed");
   sz =    (iio_buffer_end(st.dac_buf)-iio_buffer_first(st.dac_buf,0))
        /  QNICLL_SAMP_SZ;
   st.dac_samps = sz;
@@ -261,42 +282,42 @@ int qnicll_init(void *init_st) {
 
   // if we had a PCI connection, we would go through it.
   // however for now we go over inet
-  if (qregc_connect(libiio_init->ipaddr, &err))
+  if (qregc_connect(libiio_init->ipaddr, &ll_err))
     RBUG("inet connection to zcu board fail");
 
 
   // This is a serial USB connection
   // to the QNA firmware on the S750 board
   printf("DBG: try dev %s\n", libiio_init->usbdev);
-  if (qnac_connect(libiio_init->usbdev, &err))
+  if (qna_connect(libiio_init->usbdev, &ll_err))
     RBUG("cant connect to QNA firmare on S750 board");    
   
 
   st.dac = iio_context_find_device(st.ctx, "axi-ad9152-hpc");
   if (!st.dac)
-    return bug("cannot find libiio dac");
+    RBUG("cannot find libiio dac");
   st.adc = iio_context_find_device(st.ctx, "axi-ad9680-hpc");
   if (!st.adc)
-    return bug("cannot find libiio adc");
+    RBUG("cannot find libiio adc");
 
   for(i=0;i<2;++i) {
     //sprintf(str,"voltage%d",i+1);
     // st.dac_ch[i] = iio_device_find_channel(st.dac, str, true);
     st.dac_ch[i] = iio_device_get_channel(st.dac, i);
     if (!st.dac_ch[i])
-      return bug("dac lacks channel");
+      RBUG("dac lacks channel");
     iio_channel_enable(st.dac_ch[i]);
     if (!iio_channel_is_enabled(st.dac_ch[i]))
-      return bug("chan not enabled");
+      RBUG("chan not enabled");
   }
 
   for(i=0;i<2;++i) {  
     st.adc_ch[i] = iio_device_get_channel(st.adc, i);
     if (!st.adc_ch[i])
-      return bug("adc lacks chan");
+      RBUG("adc lacks chan");
     iio_channel_enable(st.adc_ch[i]);
     if (!iio_channel_is_enabled(st.adc_ch[i]))
-      return bug("chan not enabled");
+      RBUG("chan not enabled");
   }
   
   st.samp_sz = iio_device_get_sample_size(st.adc);
@@ -328,13 +349,14 @@ int qnicll_txrx_en(int en) {
 
 int qnicll_set_rx_buf_sz_samps(int *sz_samps) {
   int sz = *sz_samps;
-  if (st.adc_buf) return err("cant change adc buf size", QNICLL_ERR_MISUSE);
+  if (st.adc_buf) RUSE("cant change adc buf size");
   sz = (int)(sz/4)*4;
   st.adc_buf = iio_device_create_buffer(st.adc, sz, 0);
-  if (!st.adc_buf) return err("cant make adc buf", QNICLL_ERR_BUG);
+  if (!st.adc_buf) RBUG("cant make adc buf");
   *sz_samps = sz;
   return 0;
 }
+
 
 
 
@@ -344,7 +366,7 @@ int qnicll_done(void) {
   if (st.adc_buf) iio_buffer_destroy(st.adc_buf);
   if (st.dac_buf) iio_buffer_destroy(st.dac_buf);
   qregc_disconnect();  
-  qnac_disconnect();
+  qna_disconnect();
 }
 
 
