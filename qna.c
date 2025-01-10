@@ -43,17 +43,21 @@ static char errmsg_ll[256];
 
 int qna_connect(char *devname, qnicll_set_err_fn *err_fn) {
   set_errmsg_fn = err_fn;
-  return qna_usb_connect(devname, err_fn);
+  //  return qna_usb_connect(devname, err_fn);
+  return 0;
 }
 
 int do_cmd(char *cmd) {
-  return qna_usb_do_cmd(cmd, rsp, 1024);
+  //  return qna_usb_do_cmd(cmd, rsp, 1024);
+  printf("QNA: %s\n", cmd);
 }
 
 int do_cmd_get_int(char *cmd, int *i) {
   int e;
   int ii;
   DO(do_cmd(cmd));
+  return 0;
+  
   e = sscanf(rsp, "%d", &ii);
   if (e!=1) BUG("missing int in rsp");
   *i = ii;
@@ -65,6 +69,8 @@ int do_cmd_get_doub(char *cmd, double *d) {
   int e;
   double dd;
   DO(do_cmd(cmd));
+  return 0;
+  
   e = sscanf(rsp, "%lg", &dd);
   if (e!=1)
     return ((*set_errmsg_fn)("missing dbl in rsp", QNICLL_ERR_BUG));
@@ -106,5 +112,5 @@ int qna_set_rxefpc_basis(int *basis) {
 }
 
 int qna_disconnect(void){
-  return qna_usb_disconnect();
+  //  return qna_usb_disconnect();
 }

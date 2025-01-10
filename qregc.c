@@ -71,12 +71,12 @@ int wr_str(char *buf) {
 
 
 int rd_int(int *v) {
-  int n, i, l = rd_pkt(rxbuf, 1023);
+  int n, e, i, l = rd_pkt(rxbuf, 1023);
   rxbuf[l]=0;
-  n = sscanf(rxbuf, "%d", &i);
-  if (n!=1) BUG("no int rsp");
+  n = sscanf(rxbuf, "%d %d", &e, &i);
+  if (n!=2) BUG("no int rsp");
   *v=i;
-  return 0;
+  return e;
 }
 
 int qregc_connect(char *hostname, qnicll_set_err_fn *err_fn) {
@@ -125,7 +125,7 @@ int qregc_set_probe_len_bits(int *probe_len_bits) {
 
 int qregc_set_probe_qty(int *probe_qty) {
   int e;
-  sprintf(buf, "num_probes %d", *probe_qty);
+  sprintf(buf, "probe_qty %d", *probe_qty);
   e = wr_str(buf);
   if (e) return e;
   return rd_int(probe_qty);
@@ -138,19 +138,19 @@ int qregc_tx(int *en) {
 }
 
 int qregc_set_use_lfsr(int *use) {
-  sprintf(buf, "lfsren %d", *use);
+  sprintf(buf, "lfsr_en %d", *use);
   wr_str(buf);
   return rd_int(use);
 }
 
 int qregc_set_tx_always(int *en) {
-  sprintf(buf, "txalways %d", *en);
+  sprintf(buf, "tx_always %d", *en);
   wr_str(buf);
   return rd_int(en);
 }
 
 int qregc_set_tx_0(int *en) {
-  sprintf(buf, "tx0 %d", *en);
+  sprintf(buf, "tx_0 %d", *en);
   wr_str(buf);
   return rd_int(en);
 }
