@@ -39,7 +39,7 @@ typedef struct qnicll_state_st {
 static qnicll_state_t st={0};
 
 // standard way of calling lower-level functions
-// that might set an error message.
+// that might set an error message. (st.errmsg_ll)
 #define DO(CMD) { \
     int e=CMD;    \
     if (e) {      \
@@ -53,16 +53,16 @@ static int ll_err(char *str, int err) {
   return err;
 }
 
-
+// These are used to return errors from this layer
 #define RBUG(STR) {                            \
-  sprintf(st.errmsg, "%s: %s", __func__, STR); \
+  sprintf(st.errmsg, "BUG: %s: %s", __func__, STR); \
   return QNICLL_ERR_BUG;                       \
 }
 #define RUSE(STR) {                            \
-  sprintf(st.errmsg, "%s: %s", __func__, STR); \
+  sprintf(st.errmsg, "MISUSE: %s: %s", __func__, STR); \
   return QNICLL_ERR_MISUSE;                    \
 }
-
+char emsg[256];
 
 
 char *qnicll_error_desc(void) {
@@ -88,6 +88,7 @@ int qnicll_set_mode(int mode) {
 // inputs: mode: requested mode. one of QNICLL_MODE_*
 // returns: one of QNICLL_ERR_*
   int i;
+  double d;
   switch(mode) {
     case QNICLL_MODE_CDM:
       i=0;
@@ -96,6 +97,8 @@ int qnicll_set_mode(int mode) {
       i=0;
       qna_set_rxsw(&i);
       if (i!=0) RBUG("cant set rxsw");
+      d=100;
+      qna_set_rx_voa_atten_dB(&d);
       st.mode = QNICLL_MODE_CDM;
       break;
     case QNICLL_MODE_MEAS_NOISE:
@@ -180,6 +183,7 @@ static int refill_rx_buf(void) {
   if (!st.adc_filled) {
     sz = iio_buffer_refill(st.adc_buf); // returns -1 or size in bytes
     if (sz<0) RBUG("cant refill buffer");
+    printf("DBG: filled buf sz %zd\n", sz);
     st.adc_occ_samps = sz/(QNICLL_SAMP_SZ);
     st.adc_status=0;
     st.adc_filled=1;
@@ -271,26 +275,30 @@ int qnicll_init(void *init_st) {
   int i, e=0, v;
   int myiio_fd;
   char str[32];
-  
+
   qnicll_init_info_libiio_t *libiio_init = (qnicll_init_info_libiio_t *)init_st;
-  strcpy(str, "ip:");
-  strcat(str, libiio_init->ipaddr);
-  printf("DBG: try context %s\n", str);
-  st.ctx = iio_create_context_from_uri(str);
-  if (!st.ctx)
-    RBUG("cannot get context. perhaps init_st.ipaddr is wrong.");
+
 
   // if we had a PCI connection, we would go through it.
   // however for now we go over inet
-  if (qregc_connect(libiio_init->ipaddr, &ll_err))
-    RBUG("inet connection to zcu board fail");
+  DO(qregc_connect(libiio_init->ipaddr, &ll_err));
 
-
+  
   // This is a serial USB connection
   // to the QNA firmware on the S750 board
-  printf("DBG: try dev %s\n", libiio_init->usbdev);
-  if (qna_connect(libiio_init->usbdev, &ll_err))
-    RBUG("cant connect to QNA firmare on S750 board");    
+  DO (qna_connect(libiio_init->usbdev, &ll_err));
+  
+  strcpy(str, "ip:");
+  strcat(str, libiio_init->ipaddr);
+  // printf("DBG: try context %s\n", str);
+  st.ctx = iio_create_context_from_uri(str);
+  if (!st.ctx) {
+    sprintf(emsg, "cant get iio context at %s", str);
+    RBUG(emsg);
+  }
+
+
+
   
 
   st.dac = iio_context_find_device(st.ctx, "axi-ad9152-hpc");
@@ -353,6 +361,7 @@ int qnicll_set_rx_buf_sz_samps(int *sz_samps) {
   sz = (int)(sz/4)*4;
   st.adc_buf = iio_device_create_buffer(st.adc, sz, 0);
   if (!st.adc_buf) RBUG("cant make adc buf");
+  printf("DBG: called iio_device_create_buffer(st.adc, sz, 0);\n");
   *sz_samps = sz;
   return 0;
 }
@@ -370,7 +379,9 @@ int qnicll_done(void) {
 }
 
 
-
+int qnicll_set_rxq_polctl_setting_idx(int *idx) {
+  return qna_set_rxefpc_basis(idx);
+}
 
 int qnicll_idx_t2p(int format, int ch, int t_idx) {
 // desc: converts temporal index to positional index and vice versus, according to format.

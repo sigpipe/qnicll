@@ -50,6 +50,7 @@
 *.usyms
 *.xz
 *.zst
+out/*
 Module.symvers
 modules.order
 

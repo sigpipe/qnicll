@@ -19,20 +19,21 @@ char errmsg[256];
 void err(char *str) {
   printf("ERR: %s\n", str);
   printf("     %s\n", qnicll_error_desc());
-  printf("     errno %d\n", errno);
+  printf("     errno %d = %s\n", errno, strerror(errno));
   exit(1);
 }
 
 void crash(int e, char *str) {
+// desc: crashes wih informative messages
   printf("ERR: %d\n", e);
-  
   printf("     %s\n", qnicll_error_desc());
-  printf("     errno %d\n", errno);
+  printf("     errno %d = %s\n", errno, strerror(errno));  
   exit(1);
 }
-// check and crash
+
+// check and crash if error
 #define C(CALL)     {int e = CALL; if (e) crash(e, "");}
-//#define C(CALL,MSG) {int e = CALL; if (e) crash(e, MSG);}
+
 
 /*
 void set_blocking_mode(struct iio_buffer *buf, int en) {
@@ -124,7 +125,7 @@ int main(void) {
 
   int cap_len_samps, rx_samps, rx_status;
   int num_itr, b_i;
-  int *times_s;
+  time_t *times_s;
   
   int probe_qty=25;
   int probe_len_bits, probe_pd_samps;
@@ -134,7 +135,7 @@ int main(void) {
 
 
   qnicll_init_info_libiio_t init_info;
-  strcpy(init_info.ipaddr, "10.0.0.18");
+  strcpy(init_info.ipaddr, "10.0.0.5");
   strcpy(init_info.usbdev, "/dev/ttyUSB0");
   C(qnicll_init(&init_info));
 
@@ -179,8 +180,8 @@ int main(void) {
 
 
   int d;
-  d = 2;
-  // d=24;
+  // d = 2;
+  d=24;
   d = ask_num("probe_pd (us)", d);
   i = (int)floor((d*1e-6)*fsamp_Hz/4)*4;
   C(qnicll_set_probe_pd_samps(&i));
@@ -190,7 +191,7 @@ int main(void) {
 
   probe_qty = (int)floor(ADC_N/probe_pd_samps);
   printf("max probes %d\n", probe_qty);
-  probe_qty=10;
+  probe_qty=100;
   i=probe_qty = ask_num("probe_qty", probe_qty);
   qnicll_set_probe_qty(&probe_qty);
   if (probe_qty != i) {
@@ -229,8 +230,7 @@ int main(void) {
   
   num_itr=1;
   // num_itr = ask_num("num_itr", 1);
-  times_s = (int *)malloc(num_itr*sizeof(int));
-
+  times_s = (time_t *)malloc(num_itr*sizeof(time_t));
   
 
 
@@ -251,14 +251,14 @@ int main(void) {
 
 
 
-  fd = open("out/d.raw", O_CREAT | O_WRONLY | O_TRUNC, S_IRWXO);
-  if (fd<0) err("cant open d.raw");
+  fd = open("out/d.raw", O_CREAT | O_WRONLY | O_TRUNC, S_IRWXU | S_IRWXO);
+  if (fd<0) err("cant open out/d.raw");
   
   for (itr=0;itr<1;++itr) {
 
     printf("itr %d\n", itr);
 
-    *(times_s + itr) = (int)time(0);
+    *(times_s + itr) = time(0);
     
     // cause transmission to DAC simultaneously
     // with samples rxed from ADC
@@ -267,7 +267,7 @@ int main(void) {
     for(b_i=0; b_i<cap_len_bufs; ++b_i) {
       printf("ref s\n");
       C(qnicll_get_filled_rx_buf(&rx_buf, &occ_samps, &rx_status));
-      printf("ref e\n");
+      // printf("DBG: refilled x%lx  %d\n", (size_t)rx_buf, occ_samps);
       if (cap_len_samps != occ_samps)
 	printf("tried to refill %d but got %d samps\n",
 	       cap_len_samps, occ_samps);
@@ -275,9 +275,9 @@ int main(void) {
       left_sz = occ_samps * QNICLL_SAMP_SZ; // now in bytes
       while(left_sz > 0) {
         sz = write(fd, (void *)rx_buf, left_sz);
-        if (sz<=0) err("write failed");
+        if (sz<=0) err("write to file failed");
         if (sz >= left_sz) break;
-	printf("WARN: tried to write %zd but wrote %zd bytes\n",
+	printf("WARN: tried to write %zd to file but wrote %zd bytes\n",
 	       left_sz, sz);
 	left_sz -= sz;
 	rx_buf = (void *)((char *)rx_buf + sz);
@@ -344,14 +344,14 @@ int main(void) {
   fprintf(fp,"probe_pd_samps = %d;\n", probe_pd_samps);
   
   fprintf(fp,"probe_len_bits = %d;\n", probe_len_bits);
-  fprintf(fp,"data_probe = 'i_adc q_adc';\n");
+  fprintf(fp,"data_hdr = 'i_adc q_adc';\n");
   fprintf(fp,"data_len_samps = %d;\n", cap_len_samps);
   fprintf(fp,"data_in_other_file = 2;\n");
   fprintf(fp,"num_itr = %d;\n", num_itr);
   fprintf(fp,"time = %d;\n", (int)time(0));
   fprintf(fp,"itr_times = [");
   for(i=0;i<num_itr;++i)
-    fprintf(fp," %d", *(times_s+i)-*(times_s));
+    fprintf(fp," %d", (int)(*(times_s+i)-*(times_s)));
   fprintf(fp, "];\n");
 
   
