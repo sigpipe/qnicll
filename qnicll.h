@@ -9,6 +9,11 @@
 
 #include <sys/types.h>
 
+typedef struct qnicll_settings_st {
+  double txc_voa_atten_dB;
+  double txq_voa_atten_dB;
+} qnicll_settings_t;
+
 
 // Error codes
 // 
@@ -482,7 +487,9 @@ int qnicll_set_fqsw_en(int en);
 // desc: emables the square wave to the fast quantum switch.
 //       Used in mode QNICLL_MODE_MEAS_NOISE.
 
-  
+
+int qnicll_set_fpc_wp_dac(int wp, int *dac);
+
 // int qnicll_set_txc_wl_idx(int *wl_idx);
 // desc: sets classical wavelength transmission
 // inputs: wl_idx: requested index in set of wavelengths.  0 or 1.
@@ -492,7 +499,7 @@ int qnicll_set_fqsw_en(int en);
 // I cant implement this yet!
 
 
-
+int qnicll_get_settings(qnicll_settings_t *set);
 
 // DEBUG FUNCTIONS MAY COME AND GO!!!
 

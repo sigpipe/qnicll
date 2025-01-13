@@ -19,7 +19,8 @@ char errmsg[256];
 void err(char *str) {
   printf("ERR: %s\n", str);
   printf("     %s\n", qnicll_error_desc());
-  printf("     errno %d = %s\n", errno, strerror(errno));
+  if (errno)
+    printf("     errno %d = %s\n", errno, strerror(errno));
   exit(1);
 }
 
@@ -27,7 +28,8 @@ void crash(int e, char *str) {
 // desc: crashes wih informative messages
   printf("ERR: %d\n", e);
   printf("     %s\n", qnicll_error_desc());
-  printf("     errno %d = %s\n", errno, strerror(errno));  
+  if (errno)
+    printf("     errno %d = %s\n", errno, strerror(errno));  
   exit(1);
 }
 
@@ -109,7 +111,7 @@ int main(void) {
   FILE *fp;
   int fd;
   double x, y;
-  double fsamp_Hz;
+  double dd,fsamp_Hz;
 
   int tx_fmt;
   
@@ -136,13 +138,22 @@ int main(void) {
 
   qnicll_init_info_libiio_t init_info;
   strcpy(init_info.ipaddr, "10.0.0.5");
-  strcpy(init_info.usbdev, "/dev/ttyUSB0");
+  //  strcpy(init_info.usbdev, "/dev/ttyUSB0");
   C(qnicll_init(&init_info));
 
   fsamp_Hz=0;
   C(qnicll_set_sample_rate_Hz(&fsamp_Hz)); // querry
 
-
+  dd=999;
+  C(qnicll_set_txc_voa_atten_dB(&dd));
+  printf("classical voa %g\n", dd);
+  dd=0;
+  C(qnicll_set_txq_voa_atten_dB(&dd));
+  printf("quantum voa %g\n", dd);
+  i=100;
+  //  C(qnicll_set_fpc_wp_dac(1, &i));
+  //  printf("wp is %d\n", i);
+#if 0  
   int probe_mod = QNICLL_MODULATION_IM;
   int osamp = 4;
   C(qnicll_set_probe_tx_modulation(&probe_mod, &osamp));
@@ -217,6 +228,7 @@ int main(void) {
       //    printf("cap_len_samps %d must be < %d \n", cap_len_samps, ADC_N);
       //    printf("WARN: must increase buf size\n");
 
+  
 
    
   //  printf("using probe_qty %d\n", probe_qty);
@@ -357,7 +369,7 @@ int main(void) {
   
   fclose(fp);
 
-  
+#endif  
   return 0;
 }
 
