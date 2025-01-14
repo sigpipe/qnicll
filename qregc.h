@@ -15,4 +15,13 @@ int qregc_set_use_lfsr(int *use);
 int qregc_tx(int *en);
 int qregc_disconnect(void);
 
+int qregc_set_txc_voa_atten_dB(double *atten_dB);
+int qregc_set_txq_voa_atten_dB(double *atten_dB);
+int qregc_set_rx_voa_atten_dB(double *atten_dB);
+
+int qregc_set_tx_opsw_cross(int *cross);
+int qregc_set_rx_opsw_cross(int *cross);
+
+int qregc_set_rxq_basis(int *basis);
+int qregc_set_fpc_wp_dac(int wp, int *dac);  
 #endif

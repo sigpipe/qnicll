@@ -50,6 +50,7 @@ static qnicll_state_t st={0};
 // lower level code fills in errmsg_ll using this:
 static int ll_err(char *str, int err) {
   strcpy(st.errmsg_ll, str);
+  //  printf("BUG: st.errmsg_ll %s\n", st.errmsg_ll);
   return err;
 }
 
@@ -183,7 +184,7 @@ static int refill_rx_buf(void) {
   if (!st.adc_filled) {
     sz = iio_buffer_refill(st.adc_buf); // returns -1 or size in bytes
     if (sz<0) RBUG("cant refill buffer");
-    printf("DBG: filled buf sz %zd\n", sz);
+    // printf("DBG: filled buf sz %zd\n", sz);
     st.adc_occ_samps = sz/(QNICLL_SAMP_SZ);
     st.adc_status=0;
     st.adc_filled=1;
@@ -286,7 +287,7 @@ int qnicll_init(void *init_st) {
   
   // This is a serial USB connection
   // to the QNA firmware on the S750 board
-  DO (qna_connect(libiio_init->usbdev, &ll_err));
+  //  DO (qna_connect(libiio_init->usbdev, &ll_err));
   
   strcpy(str, "ip:");
   strcat(str, libiio_init->ipaddr);
@@ -348,9 +349,11 @@ int qnicll_dbg_set_tx_0(int *en) {
 
 int qnicll_txrx_en(int en) {
   int e,r=en;
-  e = qregc_tx(&r);
+  
+  e = qregc_tx(&r); // this is DEPRECATED!
   if (e) return e;
   return (r==en)?0:QNICLL_ERR_BUG;
+  
 }
 
 
@@ -361,7 +364,7 @@ int qnicll_set_rx_buf_sz_samps(int *sz_samps) {
   sz = (int)(sz/4)*4;
   st.adc_buf = iio_device_create_buffer(st.adc, sz, 0);
   if (!st.adc_buf) RBUG("cant make adc buf");
-  printf("DBG: called iio_device_create_buffer(st.adc, sz, 0);\n");
+  // printf("DBG: called iio_device_create_buffer(st.adc, sz, 0);\n");
   *sz_samps = sz;
   return 0;
 }
@@ -401,3 +404,35 @@ int qnicll_idx_t2p(int format, int ch, int t_idx) {
 }
 
 
+
+int qnicll_set_txc_voa_atten_dB(double *atten_dB) {
+  DO(qregc_set_txc_voa_atten_dB(atten_dB));
+}
+
+int qnicll_set_txq_voa_atten_dB(double *atten_dB) {
+  DO(qregc_set_txq_voa_atten_dB(atten_dB));
+}
+
+int qnicll_set_rx_voa_atten_dB(double *atten_dB) {
+  DO(qregc_set_rx_voa_atten_dB(atten_dB));
+}
+
+
+int qnicll_set_tx_opsw_cross(int *cross) {
+  DO(qregc_set_tx_opsw_cross(cross));
+}
+int qnicll_set_rx_opsw_cross(int *cross) {
+  DO(qregc_set_rx_opsw_cross(cross));
+}
+
+int qnicll_set_rxq_basis(int *basis) {
+  DO(qregc_set_rxq_basis(basis));
+}
+
+int qnicll_set_fpc_wp_dac(int wp, int *dac) {
+  DO(qregc_set_fpc_wp_dac(wp, dac));  
+}
+
+int qnicll_get_settings(qnicll_settings_t *set) {
+  return 0;
+}

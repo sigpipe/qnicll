@@ -15,6 +15,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include "qregc.h"
+#include "util.h"
 
 char rxbuf[1024];
 
@@ -70,14 +71,36 @@ int wr_str(char *buf) {
 }
 
 
-int rd_int(int *v) {
+int rd(void) {
   int n, e, i, l = rd_pkt(rxbuf, 1023);
   rxbuf[l]=0;
-  n = sscanf(rxbuf, "%d %d", &e, &i);
-  if (n!=2) BUG("no int rsp");
-  *v=i;
-  return e;
+
+  // printf("rx: ");  util_print_all(rxbuf);
+  
+  n = sscanf(rxbuf, "%d", &e);
+  if (n!=1) BUG("no errcode rsp");
+  if (e) {
+    // util_print_all(rxbuf);
+    BUG(rxbuf);
+  }
 }
+
+int rd_int(int *v_p) {
+  int e, n;
+  if (e=rd()) return e;
+  n = sscanf(rxbuf, "%d %d", &e, v_p);
+  if (n!=2) BUG("missing int rsp");
+  return 0;
+}
+
+int rd_double(double *d_p) {
+  int n, e;
+  if (e=rd()) return e;
+  n = sscanf(rxbuf, "%d %lg", &e, d_p);
+  if (n!=2) BUG("missing double rsp");
+  return 0;
+}
+
 
 int qregc_connect(char *hostname, qnicll_set_err_fn *err_fn) {
 // err_fn: function to use to report errors.
@@ -160,3 +183,45 @@ int qregc_disconnect(void) {
   close(soc);
 }
 
+int qregc_set_txc_voa_atten_dB(double *atten_dB) {
+// desc: sets transmit classical optical attenuation in units of dB.
+  sprintf(buf, "qna voa 2 %.2f", *atten_dB);
+  wr_str(buf);
+  return rd_double(atten_dB);
+}
+int qregc_set_txq_voa_atten_dB(double *atten_dB) {
+// desc: sets transmit quantum optical attenuation in units of dB.
+  sprintf(buf, "qna voa 1 %.2f", *atten_dB);
+  wr_str(buf);
+  return rd_double(atten_dB);
+}
+int qregc_set_rx_voa_atten_dB(double *atten_dB) {
+// desc: sets rx optical attenuation in units of dB.
+  sprintf(buf, "qna voa 3 %.2f", *atten_dB);
+  wr_str(buf);
+  return rd_double(atten_dB);
+}
+
+
+int qregc_set_tx_opsw_cross(int *cross) {
+  sprintf(buf, "qna opsw 1 %d", *cross);
+  wr_str(buf);
+  return rd_int(cross);
+}
+int qregc_set_rx_opsw_cross(int *cross) {
+  sprintf(buf, "qna opsw 2 %d", *cross);
+  wr_str(buf);
+  return rd_int(cross);
+}
+
+int qregc_set_rxq_basis(int *basis) {
+  sprintf(buf, "qna basis %d", *basis);
+  wr_str(buf);
+  return rd_int(basis);
+}
+
+int qregc_set_fpc_wp_dac(int wp, int *dac) {
+  sprintf(buf, "qna cfg cal efpc 1 %d %d", wp, *dac);
+  wr_str(buf);
+  return rd_int(dac);
+}
