@@ -34,6 +34,11 @@ typedef struct qnicll_state_st {
 
   int adc_filled, adc_occ_samps, adc_status;
   
+  int rx_sz_samps;
+
+  int tx_pushed;
+
+  short int *wbuf;
   size_t samp_sz;
 } qnicll_state_t;
 static qnicll_state_t st={0};
@@ -179,6 +184,23 @@ int qnicll_set_probe_tx_format(int *format) {
   return 0;
 }
 
+int qnicll_set_num_kernel_rx_bufs(int num_bufs) {
+// desc: lower level code maintains a set of "kernel" buffers.  When reading from
+//   the ADC, it reads as fast as possible so as to not miss any samples.
+//   after one buffer fills, the next is filled and so on.  Whether or not
+//   calling code consumes the buffers.  But if you set num bufs to one,
+//   it will only fill one buffer at a time.
+//   If you don't call this func, it will use a reasonable default number
+//   of buffers.
+  int e;
+  e=iio_device_set_kernel_buffers_count(st.adc, num_bufs);
+  if (e) {
+    sprintf(st.errmsg, "OUTOFMEM: %s: cant alloc requested num kernel bufs", __func__);
+    return QNICLL_ERR_OUTOFMEM;
+  }
+  return 0;
+}
+
 static int refill_rx_buf(void) {
   ssize_t sz;
   if (!st.adc_filled) {
@@ -210,18 +232,34 @@ int qnicll_return_rx_buf(void) {
 }
 
 int qnicll_set_tx_buf_sz_samps(int *sz_samps) {
-  int sz = *sz_samps;
+  size_t isz, sz = *sz_samps;
+  //  void *p;
   // sz is sizeof(short) * numer of enabled channels = 4  
   sz = ((int)(sz/4))*4;
-
+  
+  isz = iio_device_get_sample_size(st.dac);
+  printf("DBG: isz %zd\n", isz);
+  
+  printf("DBG: try make libiio dac buf size %zd\n", sz);
   st.dac_buf = iio_device_create_buffer(st.dac, sz, false);
   // Is this a misnomer?  Does this actually create multiple buffers?
-  if (!st.dac_buf) RBUG("cant make libiio dac buf");
+  if (!st.dac_buf) {
+    sprintf(emsg, "cant create libiio dac buf of size %zd", sz);
+    RBUG(emsg);
+  }
+  st.wbuf=(short int *)malloc(sz*QNICLL_SAMP_SZ);
+  printf("DBG: made dac buf\n");
+
   
-  sz =    (iio_buffer_end(st.dac_buf)-iio_buffer_first(st.dac_buf,0))
-       /  QNICLL_SAMP_SZ;
-  st.dac_samps = sz;
-  
+  /*
+  sz = iio_buffer_end(st.dac_buf);
+  printf("DBG: esize %zd\n", sz);  
+  sz = iio_buffer_first(st.dac_buf,0);
+  printf("DBG: fsize %zd\n", sz);
+  sz = (iio_buffer_end(st.dac_buf)-iio_buffer_first(st.dac_buf,0));
+  printf("DBG: size %zd\n", sz);
+  */
+  st.dac_samps = sz/QNICLL_SAMP_SZ;
   *sz_samps = sz;  
   return 0;
 }
@@ -235,7 +273,13 @@ int qnicll_push_tx_buf(void) {
   // with modern libiio driver, enques buffer and deques an empty one.
   // But do we have to call iio_device_create_buffer() again?
   if (!sz) RBUG("iio_buffer_push() failed");
-  if (sz != st.dac_samps*QNICLL_SAMP_SZ) RBUG("iio_buffer_push() did not push all data");
+  if (sz != st.dac_samps*QNICLL_SAMP_SZ) {
+    sprintf(emsg, "iio_buffer_push() pushed %zd not %zd bytes",
+	    sz, st.dac_samps*QNICLL_SAMP_SZ);
+    printf("WARN: %s\n", emsg);
+    // RBUG(emsg);
+  }
+  st.tx_pushed=1;
   return 0;
 }
 
@@ -299,7 +343,7 @@ int qnicll_init(void *init_st) {
   }
 
 
-
+  st.tx_pushed=0;
   
 
   st.dac = iio_context_find_device(st.ctx, "axi-ad9152-hpc");
@@ -347,10 +391,40 @@ int qnicll_dbg_set_tx_0(int *en) {
   return qregc_set_tx_0(en);
 }
 
+int qnicll_dbg_shutdown(void) {
+  return qregc_shutdown();
+}
+
 int qnicll_txrx_en(int en) {
   int e,r=en;
+
+  if (en) {
+    if (!st.tx_pushed) {
+      size_t sz;
+      printf("DBG: will do a late push\n");
+      sz = iio_channel_write(st.dac_ch[0], st.dac_buf, st.wbuf, st.dac_samps*sizeof(short int));
+      printf("wrote %zd bytes\n", sz);
+      if (sz==0) {
+	printf("iio_channel_write failed\n");
+	return e;
+      }
+      
+      e=qnicll_push_tx_buf();
+      if (e) return e;
+    }
+    
+    int sz = st.rx_sz_samps;
+    sz = (int)(sz/4)*4;
+    st.adc_buf = iio_device_create_buffer(st.adc, sz, 0);
+    if (!st.adc_buf) RBUG("cant make adc buf");
+    st.rx_sz_samps = sz;
+    // printf("DBG: called iio_device_create_buffer(st.adc, sz, 0);\n");
+  } else {
+    if (st.adc_buf) iio_buffer_destroy(st.adc_buf);
+    st.adc_buf=0;
+  }
   
-  e = qregc_tx(&r); // this is DEPRECATED!
+  //  e = qregc_tx(&r); // this is DEPRECATED!
   if (e) return e;
   return (r==en)?0:QNICLL_ERR_BUG;
   
@@ -360,11 +434,8 @@ int qnicll_txrx_en(int en) {
 
 int qnicll_set_rx_buf_sz_samps(int *sz_samps) {
   int sz = *sz_samps;
-  if (st.adc_buf) RUSE("cant change adc buf size");
   sz = (int)(sz/4)*4;
-  st.adc_buf = iio_device_create_buffer(st.adc, sz, 0);
-  if (!st.adc_buf) RBUG("cant make adc buf");
-  // printf("DBG: called iio_device_create_buffer(st.adc, sz, 0);\n");
+  st.rx_sz_samps = sz;
   *sz_samps = sz;
   return 0;
 }
@@ -434,5 +505,12 @@ int qnicll_set_fpc_wp_dac(int wp, int *dac) {
 }
 
 int qnicll_get_settings(qnicll_settings_t *set) {
+  return 0;
+}
+
+int qnicll_do_qna_cmd(char *cmd, char *rsp, int rsp_len) {
+  int cmd_l=strlen(cmd);
+  if (cmd_l==0) return 0;
+  DO(qregc_do_cmd(cmd, rsp, rsp_len));
   return 0;
 }

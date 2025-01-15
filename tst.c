@@ -14,6 +14,7 @@
 #include <time.h>
 
 #include "qnicll.h"
+#include "util.h"
 
 char errmsg[256];
 void err(char *str) {
@@ -133,17 +134,19 @@ int main(void) {
   int probe_len_bits, probe_pd_samps;
 
   short int *tx_buf, *rx_buf;
-  
+  char *ipaddr;
 
 
   qnicll_init_info_libiio_t init_info;
-  strcpy(init_info.ipaddr, "10.0.0.5");
+  ipaddr = util_read_ipaddr_dot_txt();
+  strcpy(init_info.ipaddr, ipaddr);
   //  strcpy(init_info.usbdev, "/dev/ttyUSB0");
   C(qnicll_init(&init_info));
 
   fsamp_Hz=0;
   C(qnicll_set_sample_rate_Hz(&fsamp_Hz)); // querry
 
+#if 0  
   dd=999;
   C(qnicll_set_txc_voa_atten_dB(&dd));
   printf("classical voa %g\n", dd);
@@ -151,15 +154,24 @@ int main(void) {
   C(qnicll_set_txq_voa_atten_dB(&dd));
   printf("quantum voa %g\n", dd);
   i=100;
+#endif
+  
   //  C(qnicll_set_fpc_wp_dac(1, &i));
   //  printf("wp is %d\n", i);
-#if 0  
+
   int probe_mod = QNICLL_MODULATION_IM;
   int osamp = 4;
   C(qnicll_set_probe_tx_modulation(&probe_mod, &osamp));
   
   use_lfsr = (int)ask_num("use_lfsr", 1);
   C(qnicll_set_probe_datasrc(use_lfsr?QNICLL_DATASRC_LFSR:QNICLL_DATASRC_CUSTOM));
+
+  i=128;
+  i = probe_len_bits  = (int)ask_num("probe len (bits)", i);
+  C(qnicll_set_probe_len_bits(&probe_len_bits));
+  if (i != probe_len_bits)
+    printf("WARN: probe len actually %d bits\n", probe_len_bits);
+  
   if (!use_lfsr) {
     int b; // bit
     int t; // temporal idx
@@ -181,6 +193,11 @@ int main(void) {
     }
     C(qnicll_push_tx_buf()); // push data to fifo in FPGA
     // however DAC does not get this data yet.
+  }else {
+    tx_samps = probe_len_bits * osamp;
+    printf("will set tx buf sz\n");
+    C(qnicll_set_tx_buf_sz_samps(&tx_samps));
+    printf("back from set tx buf sz\n");
   }
 
   // debug stuff
@@ -195,6 +212,7 @@ int main(void) {
   d=24;
   d = ask_num("probe_pd (us)", d);
   i = (int)floor((d*1e-6)*fsamp_Hz/4)*4;
+  i = ((int)(i/64))*64;
   C(qnicll_set_probe_pd_samps(&i));
   printf("probe_pd_samps %d\n", i);
   probe_pd_samps=i;
@@ -234,11 +252,11 @@ int main(void) {
   //  printf("using probe_qty %d\n", probe_qty);
     
   
-  i=128;  
-  i = ask_num("probe_len_bits", i);
-  qnicll_set_probe_len_bits(&i);
-  printf("probe_len_bits %d\n", i);
-  probe_len_bits = i;
+  //  i=128;  
+  //  i = ask_num("probe_len_bits", i);
+  //  qnicll_set_probe_len_bits(&i);
+  //  printf("probe_len_bits %d\n", i);
+  //  probe_len_bits = i;
   
   num_itr=1;
   // num_itr = ask_num("num_itr", 1);
@@ -277,7 +295,7 @@ int main(void) {
     C(qnicll_txrx_en(1));
   
     for(b_i=0; b_i<cap_len_bufs; ++b_i) {
-      printf("ref s\n");
+      // printf("ref s\n");
       C(qnicll_get_filled_rx_buf(&rx_buf, &occ_samps, &rx_status));
       // printf("DBG: refilled x%lx  %d\n", (size_t)rx_buf, occ_samps);
       if (cap_len_samps != occ_samps)
@@ -365,11 +383,10 @@ int main(void) {
   for(i=0;i<num_itr;++i)
     fprintf(fp," %d", (int)(*(times_s+i)-*(times_s)));
   fprintf(fp, "];\n");
-
-  
   fclose(fp);
+  printf("wrote out/r.txt and out/d.raw\n");
 
-#endif  
+
   return 0;
 }
 

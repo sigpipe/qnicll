@@ -35,7 +35,7 @@ void crash(int e, char *str) {
 
 // check and crash if error
 #define C(CALL)     {int e = CALL; if (e) crash(e, "");}
-int main(void) {
+int main(int argc, char *argv[]) {
   int num_dev, i, q, j, k, n, e, itr, d, t;
   char name[32], attr[32];
   ssize_t sz, tx_sz;
@@ -58,12 +58,17 @@ int main(void) {
   time_t *times_s;
   int probe_qty=25;
   int probe_len_bits, probe_pd_samps;
-  short int *tx_buf, *rx_buf;
+  short int *rx_buf;
   double sum;
-  
   qnicll_settings_t set;
-
   int dbg_save=0;
+
+
+  if (argc>1) {
+    for (i=0;i<argc;++i)
+      printf("%s\n", argv[i]);
+  }
+
   
   qnicll_init_info_libiio_t init_info;
   strcpy(init_info.ipaddr, "10.0.0.5");
@@ -87,6 +92,8 @@ int main(void) {
     err("fail");
   }
 
+  C(qnicll_set_num_kernel_rx_bufs(1));
+    
   cap_len_samps = probe_pd_samps * probe_qty;
   rx_samps = cap_len_samps; // try to capture them all
   C(qnicll_set_rx_buf_sz_samps(&rx_samps));
