@@ -434,6 +434,23 @@ int qnicll_set_rx_buf_sz_samps(int *sz_samps);
 //       So a simultaneous IM and PH pair is considered one "samp".
 
 
+int qnicll_set_num_kernel_rx_bufs(int num_bufs);
+// desc: lower level code maintains a set of "kernel" buffers. After it
+//   commences reading from the ADC, lower level processes keep reading
+//   as fast as possible so as to not miss any samples.  After one
+//   buffer fills, the next is filled and so on.  Whether or not
+//   calling code actually consumes the buffers.  But if you set num bufs to one,
+//   it will only fill one buffer at a time.  Using only one buffer
+//   is useful when you want to take a short sample, change a parameter,
+//   and repeat the process.
+//   If you don't call this func, it will use a reasonable default number
+//   of buffers.
+// inputs: num_bufs:number of buffers requested.
+// returns: if not possible to use requested num buffers,
+//             retrurns error code QNICLL_ERR_OUTOFMEM
+
+
+
 
 int qnicll_txrx_en(int en);
 // desc: When en=1, Causes the transmission of probes or tx data
@@ -506,8 +523,9 @@ int qnicll_get_settings(qnicll_settings_t *set);
 int qnicll_dbg_set_tx_always(int *en);
 // desc: debug mode in which probe is retransmitted always.
 int qnicll_dbg_set_tx_0(int *en);
+int qnicll_dbg_shutdown(void);
 
-
+int qnicll_do_qna_cmd(char *cmd, char *rsp, int rsp_len);
 
 #endif
 

@@ -21,7 +21,7 @@ char rxbuf[1024];
 
 
 
-// char errmsg[256];
+char tmp_errmsg[256];
 
 //int min(int a, int b) {
 //  return (a<b)?a:b;
@@ -32,8 +32,13 @@ int soc;
 qnicll_set_err_fn *my_err_fn;
 #define BUG(MSG) return (*my_err_fn)(MSG, QNICLL_ERR_BUG);
 
+#define DO(CALL) { \
+  int e; \
+  e = CALL; \
+  if (e) return e; \
+  }
 
-
+static int dbg=1;
 
 int rd_pkt(char *buf, int buf_sz) {
   char len_buf[4];
@@ -42,10 +47,15 @@ int rd_pkt(char *buf, int buf_sz) {
   sz = read(soc, (void *)len_buf, 4);
   if (sz<4) BUG("read hdr fail");
   l = (int)ntohl(*(uint32_t *)len_buf);
-  l = MIN(buf_sz, l);
+  l = MIN(buf_sz-1, l);
   // printf("will read %d\n", l);
   sz = read(soc, (void *)buf, l);
   if (sz<l) BUG("read body fail");
+  buf[sz]=0;
+  if (dbg) {
+    printf("DBG1\n");
+    printf("rx: %s\n", buf);
+  }
   return sz;
 }
 
@@ -57,7 +67,9 @@ int wr_pkt(char *buf, int buf_sz) {
   sz = write(soc, (void *)&l, 4);
   if (sz!=4)
     BUG("write len fail");
-  // printf("will write %d bytes\n", buf_sz);
+  if (dbg) {  
+    printf("wr: %s\n", buf);
+  }
   sz = write(soc, (void *)buf, buf_sz);
   if (sz!=buf_sz) BUG("write buf fail");
   return 0;
@@ -75,7 +87,7 @@ int rd(void) {
   int n, e, i, l = rd_pkt(rxbuf, 1023);
   rxbuf[l]=0;
 
-  // printf("rx: ");  util_print_all(rxbuf);
+  // printf("rx: ");  util_print_all(rxbuf); printf("\n");
   
   n = sscanf(rxbuf, "%d", &e);
   if (n!=1) BUG("no errcode rsp");
@@ -84,6 +96,23 @@ int rd(void) {
     BUG(rxbuf);
   }
 }
+
+int qregc_do_cmd(char *cmd, char *rsp, int rsp_len) {
+  char buf[2048], *p;
+  int e;
+  sprintf(buf, "qna %s", cmd);
+  //  printf("buf %s\n", buf);
+  DO(wr_str(buf));
+  e = rd();
+  p=strstr(rxbuf, " ");
+  p = p?(p+1):rxbuf; // ptr to string after first space
+  if (e) {
+    return((*my_err_fn)(p, e));
+  }
+  strncpy(rsp, p, strlen(p));
+  return 0;
+}
+
 
 int rd_int(int *v_p) {
   int e, n;
@@ -110,7 +139,7 @@ int qregc_connect(char *hostname, qnicll_set_err_fn *err_fn) {
 
   my_err_fn = err_fn;
   soc = socket(AF_INET, SOCK_STREAM, 0);
-  if (soc<0) BUG("cant make socket to listen on ");
+  if (soc<0) BUG("cant make socket to connect on ");
   
   memset((void *)&srvr_addr, 0, sizeof(srvr_addr));
 
@@ -123,7 +152,10 @@ int qregc_connect(char *hostname, qnicll_set_err_fn *err_fn) {
   if (e<0) BUG("cant convert ip addr");
 
   e = connect(soc, (struct sockaddr *)&srvr_addr, sizeof(srvr_addr));
-  if (e<0) BUG("connect failed");
+  if (e<0) {
+    sprintf(tmp_errmsg, "could not connect to host %s", hostname);
+    BUG(tmp_errmsg);
+  }
   
   return 0;
 }
@@ -225,3 +257,10 @@ int qregc_set_fpc_wp_dac(int wp, int *dac) {
   wr_str(buf);
   return rd_int(dac);
 }
+
+int qregc_shutdown(void) {
+  sprintf(buf, "shutdown");
+  wr_str(buf);
+  return 0;
+}
+

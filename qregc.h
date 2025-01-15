@@ -24,4 +24,7 @@ int qregc_set_rx_opsw_cross(int *cross);
 
 int qregc_set_rxq_basis(int *basis);
 int qregc_set_fpc_wp_dac(int wp, int *dac);  
+int qregc_do_cmd(char *cmd, char *rsp, int rsp_len);
+int qregc_shutdown(void);
+
 #endif
